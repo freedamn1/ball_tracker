@@ -4,7 +4,15 @@
 
 ## 安装
 
-需要 Python 3.10+：
+需要 Python 3.10+ 和 Git LFS。先安装 Git LFS，再克隆项目以自动获取两个模型权重：
+
+```bash
+git lfs install
+git clone https://github.com/freedamn1/ball_tracker.git
+cd ball_tracker
+```
+
+如果已经克隆项目，运行 `git lfs install` 和 `git lfs pull` 获取权重。然后安装 Python 依赖：
 
 ```bash
 python3 -m venv .venv
@@ -12,7 +20,12 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-模型权重不随代码提交。将 RF-DETR 权重放到 `weights/rf-detr-basketball.pth`，将已有 YOLO26 微调权重放到 `weights/yolo26s_ball_fine_tuning.pt`，或用 `--weights` 指定路径。
+以下两个权重由 Git LFS 管理，克隆或执行 `git lfs pull` 后保存到：
+
+- `weights/rf-detr-basketball.pth`：默认 RF-DETR 篮球模型。
+- `weights/yolo26s_ball_fine_tuning.pt`：YOLO26 篮球微调模型。
+
+也可用 `--weights` 指定其他本地权重路径。模型文件应为真实权重，不能使用未下载的 LFS 文本指针。
 RF-DETR 权重需保留类别名称信息，程序自动选择 `ball`，不混入 `ball-in-basket`。
 
 ## 检测
@@ -48,7 +61,7 @@ CSV 帧号从 0 开始，坐标为原图像素。默认每个检测候选一行�
 python tune/train.py --data dataset/basketball/data.yaml --weights weights/yolo26s.pt --device 0
 ```
 
-训练结果写入 `tune/runs/`，最佳权重复制到 `weights/yolo26s_ball_fine_tuning.pt`。数据、权重、训练日志和可视化结果均不提交。
+训练结果写入 `tune/runs/`，最佳权重复制到 `weights/yolo26s_ball_fine_tuning.pt`。数据、训练日志、可视化结果和其他权重均忽略；上述两个模型通过 Git LFS 提交。
 
 ## 文件
 

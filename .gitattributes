@@ -1,0 +1,2 @@
+weights/rf-detr-basketball.pth filter=lfs diff=lfs merge=lfs -text
+weights/yolo26s_ball_fine_tuning.pt filter=lfs diff=lfs merge=lfs -text
