@@ -28,8 +28,6 @@ class TrackerConfig:
 
 @dataclass
 class VideoConfig:
-    source_type: int = 0  # 0: 视频或摄像头；1: 图片序列目录
-    source: str = str(ROOT / "dataset" / "basketball.mp4")
     output: Path = ROOT / "outputs" / "tracked.mp4"
     fallback_fps: float = 30.0
     trail_length: int = 40

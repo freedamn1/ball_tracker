@@ -1,6 +1,6 @@
 # Ball Tracker
 
-篮球检测与视频标注，默认使用 RF-DETR，可切换 YOLO26。支持视频、摄像头及图片序列，输出 MP4 和 CSV。默认只显示当帧检测；添加 `--kalman` 启用单篮球 Kalman 跟踪。
+篮球检测与视频标注，默认使用 RF-DETR，可切换 YOLO26。仅支持手机 RTSP 输入，独立线程采集和检测，双窗口预览，输出 MP4 和 CSV。默认只显示当帧检测；添加 `--kalman` 启用单篮球 Kalman 跟踪。
 
 ## 安装
 
@@ -30,28 +30,38 @@ RF-DETR 权重需保留类别名称信息，程序自动选择 `ball`，不混�
 
 ## 检测
 
-将视频或图片序列放入 `dataset/`：
+手机和电脑接入同一局域网，在手机 App 中开启 RTSP 服务，使用其提供的完整地址：
 
 ```bash
-# 默认 RF-DETR，自动选择 CUDA / CPU
-python main.py --source dataset/basketball.mp4 --conf 0.5
+# 默认 RF-DETR，不主动跳帧
+python main.py --rtsp-url "rtsp://192.168.1.100:8554/live" --conf 0.5
 
-# 图片序列；优先读取目录内或父目录 seqinfo.ini 的帧率，否则为 30 FPS
-python main.py --source-type 1 --source dataset/sequence --conf 0.5
+# 每 5 帧选取一次预测
+python main.py --rtsp-url "rtsp://192.168.1.100:8554/live" --frame-step 5
 
-# 可选 YOLO26；使用官方权重时，不存在则自动下载
-python main.py --detector yolo26 --weights weights/yolo26s.pt --source dataset/basketball.mp4
-
-# 可选跟踪
-python main.py --source dataset/basketball.mp4 --conf 0.5 --kalman
+# YOLO26，可选 Kalman 跟踪
+python main.py --rtsp-url "rtsp://192.168.1.100:8554/live" --detector yolo26 --kalman
 ```
 
-默认输出 `outputs/tracked.mp4` 和 `outputs/tracked.csv`，同名文件会覆盖。可用 `--output` 修改视频路径；CSV 与视频同名。
-`--show` 开启预览，按 q 退出；`--device cpu` 强制 CPU，`--device cuda:0` 指定 GPU。
-`--conf` 默认 0.25；`--rf-short-side` 默认 768，仅用于 RF-DETR，最长边限制 1333，不放大输入；`--imgsz` 默认 1280，仅用于 YOLO26。
+也可通过环境变量 RTSP_URL 提供地址。仅保留 RTSP 输入，移除 --source、--source-type、--show。
+RTSP 固定使用 TCP、5 秒连接/读取超时、连续失败最多重试 3 次、间隔 1 秒。
+先收到 RTSP 画面，再加载模型；加载和推理期间输入窗口持续刷新。
+默认同时开启原始输入和预测结果窗口，按 Q / Esc 或关闭任一窗口退出。
 
-CSV 帧号从 0 开始，坐标为原图像素。默认每个检测候选一行，未检出记录 `no_detection`。
-启用 Kalman 后每帧记录跟踪状态：`detected`、`predicted` 或 `lost`。横向偏移相对画面中心，正值向右。跟踪不会驱动硬件。
+--frame-step 0 表示所有帧均可送检；5 表示选取第 5、10、15……帧。
+采集和推理各使用独立线程，待预测任务仅保留最新一帧；检测跟不上时会丢弃旧任务，即使设置为 0 也不保证每帧均被检测。
+预测窗口显示最近完成预测的对应画面，不把旧检测框画到新输入帧上。
+每次预测记录开始、结束时间与检测器调用耗时（含预处理、推理、结果转换），日志和预测窗口显示延迟。
+每 10 秒及退出时汇报累计连接时长，重连等待不计入；故障在读取失败时判定。
+退出时窗口立即关闭，后台等待当前读取/模型操作结束后释放资源。
+
+默认输出 outputs/tracked.mp4 和 outputs/tracked.csv，同名文件会覆盖，--output 可修改路径。
+MP4 仅保存完成预测的帧，以固定 30 FPS 编码，属于预测结果序列，播放速度不代表现场实时速度。
+CSV 的 frame 为从 0 开始的实际接收帧序号，time_s 为相对首次收到画面的单调时钟时间；跳过的帧不写入。
+inference_start_s、inference_end_s 使用相同时间原点，inference_ms 为两者之差。
+每个检测候选一行，未检出记录 no_detection；Kalman 使用相邻预测帧接收时间差更新，missing 按预测次数计算，重连或输入尺寸改变后重置跟踪。
+输入尺寸变化时输出视频缩放至首次预测尺寸，CSV 坐标仍为当帧原图像素。
+--device cpu 强制 CPU；--device cuda:0 指定 GPU。--conf 默认 0.25；--rf-short-side 默认 768；--imgsz 默认 1280。
 
 ## YOLO26 微调
 
@@ -65,7 +75,9 @@ python tune/train.py --data dataset/basketball/data.yaml --weights weights/yolo2
 
 ## 文件
 
-- `main.py`：读取输入、选择检测器、标注与输出。
+- `main.py`：RTSP 启动与双窗口显示。
+- `rtsp_input.py`：独立采集和最新帧交换。
+- `inference_worker.py`：独立推理、标注及结果输出。
 - `config.py`：参数及共用检测结果类型。
 - `rf_detr_detector.py`、`yolo26_detector.py`：两种检测器。
 - `kalman_tracker.py`：可选跟踪，默认不启用。
